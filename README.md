@@ -7,3 +7,9 @@ Further documentation forthcoming.
 
 1. Install Meep.
 2. Download this repository and install with pip.
+
+
+
+Danny addition:
+
+You also need to replace the math.py library in the goos folder with the one provided here. The math.py library will be in a folder similar to \\wsl.localhost\Ubuntu\home\Your_USERNAME\miniconda3\envs\mp\lib\python3.9\site-packages\spins\goos\math.py
