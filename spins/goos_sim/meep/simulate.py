@@ -341,8 +341,9 @@ class FdtdSimulation(goos.ArrayFlowOpMixin, goos.ProblemGraphNode):
         # Get coordinate information.
         #xyzw = adjoint_sim.get_array_metadata(center=self._sim_region.center,
         #                                      size=self._sim_region.extents)
+
         return [
-            geometry.grad(self._field_mons[0]._xyzw + [1 / self._resolution],
+            geometry.grad(self._field_mons[0]._xyzw + tuple([1 / self._resolution]),
                           grad_wrt_eps, self._wlens)
         ]
 
@@ -405,11 +406,14 @@ class WaveguideModeSourceImpl(SimSourceImpl):
             self._wg_mode = _get_waveguide_mode(sim, self._src)
 
         # Construct source time object on
+        allSources = []
         for source in _create_waveguide_mode_source(
                 src=self._src,
                 wg_mode=self._wg_mode,
                 src_time=self._get_source_time()):
-            sim.add_source(source)
+                allSources.append(source)
+               
+        sim.change_sources(allSources) # this might be an issue. Not sure if this code is used more than once
 
     def power(self, wlen: float) -> float:
         src_time = self._get_source_time()
@@ -456,10 +460,10 @@ class EpsilonImpl(SimOutputImpl):
             np.array(sim._sim_region.extents) * sim._resolution <= 1)
 
     def eval(self, sim: mp.Simulation) -> goos.NumericFlow:
-        eps = sim.get_epsilon(omega=2 * np.pi / self._wlen)
+        eps = sim.get_epsilon(frequency= 1 / self._wlen)
 
         if len(eps.shape) < 3:
-            eps = np.expand_dims(eps, axis=self._expand_axis)
+            eps = np.expand_dims(eps, axis=int(self._expand_axis[0]))
 
         return goos.NumericFlow(eps)
 
@@ -517,7 +521,7 @@ class ElectricFieldImpl(SimOutputImpl):
                           axis=0)
 
         if len(fields.shape) < 4:
-            fields = np.expand_dims(fields, axis=self._expand_axis[0] + 1)
+            fields = np.expand_dims(fields, axis=int(self._expand_axis[0]) + 1)
         return goos.NumericFlow(fields)
 
     def after_sim(self) -> None:
@@ -623,7 +627,9 @@ class WaveguideModeOverlapImpl(SimOutputImpl):
                 self._amp_factor,
                 adjoint=True,
         ):
-            adjoint_sim.add_source(src)
+            #added line of code to add sources
+            adjoint_sim.sources.append(src)
+            adjoint_sim.add_sources()
 
 
 @goos.polymorphic_model()
@@ -696,6 +702,8 @@ class PixelatedContShapeImpl(GeometryImpl):
             for j, y in enumerate(ycoord):
                 for k, z in enumerate(zcoord):
                     val = self._shape.array[i, j, k]
+                    #val = self._shape.array
+
                     eps = (self._shape.material.permittivity(self._wlens[0]) *
                            (1 - val) +
                            self._shape.material2.permittivity(self._wlens[0]) *
@@ -729,7 +737,10 @@ class PixelatedContShapeImpl(GeometryImpl):
             wlens[0]) - self._shape.material.permittivity(wlens[0])
         mat = contrast * get_rendering_matrix(shape_coords, field_coords)
         grad_res = mat.T @ (grad.flatten() * xyzw[3].flatten())
-        grad_res = np.reshape(grad_res, self._shape.array.shape)
+        if(self._shape.array.shape == ()):
+            grad_res = np.reshape(grad_res, 1)
+        else:
+            grad_res = np.reshape(grad_res, self._shape.array.shape)
         return goos.PixelatedContShapeFlow.Grad(array_grad=grad_res)
 
 
@@ -900,7 +911,10 @@ def _get_waveguide_mode(sim: mp.Simulation,
     for i in range(4):
         mode_fields[i] = mode_fields[i][field_slicer]
 
+
+    xyzw = list(xyzw)
     xyzw[3] = np.reshape(xyzw[3], (len(xyzw[0]), len(xyzw[1]), len(xyzw[2])))
+   #xyzw[3] = np.reshape(xyzw[3], (len(xyzw[0]), len(xyzw[1]), len(xyzw[2])))
     xyzw[3] = xyzw[3][field_slicer]
     # TODO(logansu): See above TODO about hacking `get_array_metadata`.
     # For now, just guess the correct value. The error introduced by this
