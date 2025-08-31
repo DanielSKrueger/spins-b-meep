@@ -34,6 +34,7 @@ import scipy.sparse
 from spins import goos
 from spins import gridlock
 from spins.goos import schema_registry
+from gplugins.gmeep.meep_adjoint_optimization import get_component_from_sim
 
 logger = logging.getLogger(__name__)
 
@@ -461,6 +462,9 @@ class EpsilonImpl(SimOutputImpl):
 
     def eval(self, sim: mp.Simulation) -> goos.NumericFlow:
         eps = sim.get_epsilon(frequency= 1 / self._wlen)
+        print("Writing new GDS :)")
+        mmi = get_component_from_sim(sim)
+        mmi.write_gds(gdspath="Design.gds")
 
         if len(eps.shape) < 3:
             eps = np.expand_dims(eps, axis=int(self._expand_axis[0]))
