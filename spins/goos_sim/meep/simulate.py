@@ -34,6 +34,8 @@ import scipy.sparse
 from spins import goos
 from spins import gridlock
 from spins.goos import schema_registry
+
+import gdsfactory as gf
 from gplugins.gmeep.meep_adjoint_optimization import get_component_from_sim
 
 logger = logging.getLogger(__name__)
@@ -213,6 +215,7 @@ def fdtd_simulation(*args, **kwargs):
 
 class FdtdSimulation(goos.ArrayFlowOpMixin, goos.ProblemGraphNode):
     node_type = "sim.meep.fdtd_simulation"
+    background_val: goos.material.Material
 
     def __init__(
             self,
@@ -243,6 +246,7 @@ class FdtdSimulation(goos.ArrayFlowOpMixin, goos.ProblemGraphNode):
         self._resolution = 1 / sim_space.dx
         self._sim_region = sim_space.sim_region
         self._pml_thickness = sim_space.pml_thickness
+        self.background_val = background #added by Danny
 
         self._timing = sim_timing
         self._adjoint_timing = adjoint_sim_timing
@@ -283,6 +287,7 @@ class FdtdSimulation(goos.ArrayFlowOpMixin, goos.ProblemGraphNode):
                 "geometry": geometry.eval(),
                 "resolution": self._resolution,
                 "sources": self._sources,
+                "background": self.background_val, #Danny
                 "outputs": outputs,
                 "sim_timing": self._timing,
             }
@@ -321,6 +326,7 @@ class FdtdSimulation(goos.ArrayFlowOpMixin, goos.ProblemGraphNode):
             "sources": [],
             "outputs": self._field_mons,
             "adjoint": True,
+            "background": self.background_val, #added by Danny
             "adjoint_grad_val": grad_val,
             "adjoint_sources": self._outputs,
             "sim_timing": self._adjoint_timing,
@@ -462,9 +468,11 @@ class EpsilonImpl(SimOutputImpl):
 
     def eval(self, sim: mp.Simulation) -> goos.NumericFlow:
         eps = sim.get_epsilon(frequency= 1 / self._wlen)
-        print("Writing new GDS :)")
-        mmi = get_component_from_sim(sim)
-        mmi.write_gds(gdspath="Design.gds")
+        print("Writing new GDS")
+
+        threshold = 1.5 #tuned for BTO
+        mmi = get_component_from_sim(sim,threshold_offset_from_max = threshold)
+        mmi.write_gds("Design.gds")
 
         if len(eps.shape) < 3:
             eps = np.expand_dims(eps, axis=int(self._expand_axis[0]))
@@ -1044,6 +1052,7 @@ def _simulate(
         resolution: float,
         sources: List[SimSourceImpl],
         outputs: List[SimOutputImpl],
+        background: goos.material.Material,
         sim_timing: SimulationTiming,
         adjoint_grad_val: goos.ArrayFlow.Grad = None,
         adjoint_sources: List[SimOutput] = None,
@@ -1069,6 +1078,7 @@ def _simulate(
         geometry_center=sim_region.center,
         boundary_layers=pml_layers,
         geometry=geometry,
+        default_material = mp.Medium(index=background.index), #added by Danny
         sources=[],
         resolution=resolution,
         force_complex_fields=adjoint,
@@ -1147,7 +1157,7 @@ def _simulate_parallel(sim_args: Dict, num_cores: int) -> Tuple:
     script_path = os.path.join(abs_path, "simulate_parallel.py")
 
     command = [
-        "mpirun", "-np",
+        "mpiexec", "-n", #"mpirun", "-np",
         str(num_cores), "python", script_path, sim_file, "--outfile", out_file
     ]
     logger.debug("Executing command: %s", " ".join(command))
