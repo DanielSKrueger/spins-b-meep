@@ -470,7 +470,7 @@ class EpsilonImpl(SimOutputImpl):
         eps = sim.get_epsilon(frequency= 1 / self._wlen)
         print("Writing new GDS")
 
-        threshold = 1.5 #tuned for BTO
+        threshold = .55 #tuned for BTO n1 =2.3 n2 =2 Simulating ridge waveguide
         mmi = get_component_from_sim(sim,threshold_offset_from_max = threshold)
         mmi.write_gds("Design.gds")
 
